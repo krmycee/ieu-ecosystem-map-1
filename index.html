@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IEU Student Ecosystem Map</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: #F8F6F2;
+    color: #1A1A1A;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  header {
+    padding: 14px 20px 10px;
+    background: #1A1A2E;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  header h1 {
+    font-size: 14px;
+    font-weight: 600;
+    color: #fff;
+    letter-spacing: 0.3px;
+  }
+
+  header p {
+    font-size: 11px;
+    color: rgba(255,255,255,0.5);
+  }
+
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 10px 16px;
+    background: #fff;
+    border-bottom: 1px solid #E8E4DC;
+    align-items: center;
+  }
+
+  .legend-label {
+    font-size: 10px;
+    font-weight: 600;
+    color: #999;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    margin-right: 4px;
+  }
+
+  .leg-btn {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    color: #555;
+    cursor: pointer;
+    padding: 3px 9px 3px 6px;
+    border-radius: 20px;
+    border: 1px solid #E0DDD5;
+    background: #fff;
+    transition: all .15s;
+    user-select: none;
+  }
+
+  .leg-btn:hover { background: #F4F1EB; }
+  .leg-btn.active { background: #F4F1EB; border-color: #C8C4BC; }
+  .leg-btn.inactive { opacity: 0.4; }
+
+  .leg-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+
+  .edge-legend {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    color: #888;
+    padding: 3px 9px;
+    border-left: 1px solid #E0DDD5;
+    margin-left: 4px;
+  }
+
+  #canvas-wrap {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+    cursor: grab;
+  }
+
+  #canvas-wrap:active { cursor: grabbing; }
+
+  #canvas {
+    position: absolute;
+    top: 0; left: 0;
+    transform-origin: 0 0;
+  }
+
+  .zoom-controls {
+    position: absolute;
+    bottom: 14px;
+    right: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .zoom-btn {
+    width: 30px; height: 30px;
+    background: #fff;
+    border: 1px solid #E0DDD5;
+    border-radius: 6px;
+    font-size: 16px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    color: #555;
+    transition: background .12s;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+  }
+  .zoom-btn:hover { background: #F4F1EB; }
+
+  .info-panel {
+    background: #fff;
+    border-top: 1px solid #E8E4DC;
+    padding: 12px 18px;
+    min-height: 64px;
+    font-size: 12px;
+    color: #888;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .info-color-bar {
+    width: 4px;
+    min-height: 48px;
+    border-radius: 2px;
+    flex-shrink: 0;
+    background: #ccc;
+  }
+
+  .info-content { flex: 1; }
+  .info-title { font-size: 13px; font-weight: 600; color: #1A1A1A; margin-bottom: 3px; }
+  .info-cat   { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 5px; }
+  .info-desc  { font-size: 12px; color: #555; line-height: 1.5; margin-bottom: 6px; }
+  .info-tags  { display: flex; flex-wrap: wrap; gap: 4px; }
+  .info-tag   {
+    font-size: 10px; padding: 2px 7px;
+    border-radius: 10px; background: #F4F1EB;
+    border: 1px solid #E0DDD5; color: #666;
+  }
+
+  .hint { font-size: 11px; color: #aaa; margin-top: 2px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>IEU Student Ecosystem Map</h1>
+    <p>Student Stress &amp; Wellbeing Research — March 2026</p>
+  </div>
+</header>
+
+<div class="legend" id="legend">
+  <span class="legend-label">Filter</span>
+</div>
+
+<div id="canvas-wrap">
+  <svg id="canvas"></svg>
+  <div class="zoom-controls">
+    <button class="zoom-btn" id="zoom-in">+</button>
+    <button class="zoom-btn" id="zoom-out">−</button>
+    <button class="zoom-btn" id="zoom-reset" title="Reset" style="font-size:11px">⌂</button>
+  </div>
+</div>
+
+<div class="info-panel" id="info-panel">
+  <div class="info-color-bar" id="info-bar"></div>
+  <div class="info-content">
+    <div class="hint">Click any node to see details. Drag to pan. Scroll to zoom.</div>
+  </div>
+</div>
+
+<script>
+const CATS = {
+  student:  { label: "Student (centre)",   color: "#534AB7" },
+  academic: { label: "Academic",            color: "#0F6E56" },
+  support:  { label: "Campus support",      color: "#185FA5" },
+  financial:{ label: "Financial",           color: "#854F0B" },
+  social:   { label: "Social environment",  color: "#993556" },
+  physical: { label: "Physical health",     color: "#993C1D" },
+};
+
+const NODES = [
+  { id:"student",    label:["IEU","Student"],      cat:"student",  r:42, x:460, y:360,
+    desc:"The focus of the research. Stress, wellbeing, and campus experience are examined across a semester.",
+    tags:["n=7 survey responses","Design students","Avg. stress 6.6/10"] },
+
+  { id:"instructor", label:["Instructor"],          cat:"academic", r:30, x:240, y:180,
+    desc:"Provides studio guidance, jury evaluation, and project feedback. Inconsistent feedback is a key stressor.",
+    tags:["Uncertainty trigger","Jury evaluation","Feedback quality"] },
+  { id:"studio",     label:["Studio"],              cat:"academic", r:30, x:460, y:120,
+    desc:"Weekly studio sessions create an intense pressure environment. Group work cited as a stress source.",
+    tags:["Deadline intensity","Group projects","Physical exhaustion"] },
+  { id:"jury",       label:["Jury &","Critique"],   cat:"academic", r:30, x:680, y:170,
+    desc:"End-of-term jury presentations rank among the highest-stress moments reported.",
+    tags:["Emotional unpredictability","Burnout risk","Motivation impact"] },
+  { id:"deadline",   label:["Deadline","Week"],     cat:"academic", r:27, x:760, y:310,
+    desc:"During deadline week, sleep, eating, and physical activity are all significantly disrupted.",
+    tags:["Sleep decreases","5/7 students affected","All-nighter culture"] },
+  { id:"gradproj",   label:["Grad.","Project"],     cat:"academic", r:25, x:240, y:330,
+    desc:"4th-year students identify graduation project pressure as the single biggest source of stress.",
+    tags:["Uncertainty","Material costs","Time pressure"] },
+
+  { id:"counseling", label:["Counseling"],          cat:"support",  r:25, x:760, y:480,
+    desc:"Available on campus but none of the 7 respondents have used it. Reasons: 'It wouldn't help' and 'No time'.",
+    tags:["Awareness exists","Zero usage","High skepticism"] },
+  { id:"health",     label:["Health","Services"],   cat:"support",  r:22, x:680, y:570,
+    desc:"Campus health services are known but not actively accessed.",
+    tags:["Known but unused","Low access"] },
+  { id:"sports",     label:["Sports"],              cat:"support",  r:22, x:560, y:600,
+    desc:"Some students use exercise as a coping strategy; facilities aren't fully accessible during crunch.",
+    tags:["Coping strategy","Kaan-type student"] },
+
+  { id:"materials",  label:["Materials"],           cat:"financial",r:25, x:140, y:460,
+    desc:"Material costs for architecture and design projects place significant financial pressure on students.",
+    tags:["Top expense","Credit card debt","Insufficient scholarships"] },
+  { id:"rent",       label:["Rent &","Living"],     cat:"financial",r:22, x:200, y:570,
+    desc:"Rent and day-to-day living expenses strain student budgets considerably.",
+    tags:["Fixed cost","Family support","Financial stress"] },
+  { id:"scholarship",label:["Scholarship"],         cat:"financial",r:22, x:80,  y:360,
+    desc:"Scholarship and loan support is perceived as insufficient or difficult to access.",
+    tags:["Low accessibility","Information gap"] },
+
+  { id:"family",     label:["Family"],              cat:"social",   r:28, x:240, y:540,
+    desc:"The most frequently turned-to support source when students struggle. Trust and practical advice are key.",
+    tags:["#1 support source","Trust relationship","Practical advice"] },
+  { id:"peers",      label:["Peers &","Friends"],   cat:"social",   r:25, x:620, y:80,
+    desc:"Peer solidarity plays an important role in stress management, but no structured support exists.",
+    tags:["Informal support","Studio bond","Isolation risk"] },
+  { id:"partner",    label:["Romantic","Partner"],  cat:"social",   r:20, x:420, y:590,
+    desc:"Personal relationship conflicts also appeared as a stress source in survey data.",
+    tags:["Personal stress","Home environment","Emotional burden"] },
+
+  { id:"sleep",      label:["Sleep"],               cat:"physical", r:26, x:780, y:170,
+    desc:"The most consistently disrupted behaviour. 5/7 students reported major sleep reductions during deadline week.",
+    tags:["5/7 affected","All-nighter culture","Health risk"] },
+  { id:"eating",     label:["Eating","Habits"],     cat:"physical", r:23, x:820, y:360,
+    desc:"Eating patterns shift in both directions — some students overeat, others skip meals entirely.",
+    tags:["Irregular eating","Stress eating","Loss of appetite"] },
+  { id:"activity",   label:["Activity"],            cat:"physical", r:22, x:760, y:590,
+    desc:"Exercise is a coping mechanism for some; generally decreases during deadline periods.",
+    tags:["Coping tool","Decreasing trend","Kaan-type: increases"] },
+];
+
+const EDGES = [
+  { from:"student", to:"instructor",  type:"stress", w:2.5 },
+  { from:"student", to:"studio",      type:"stress", w:3   },
+  { from:"student", to:"jury",        type:"stress", w:3   },
+  { from:"student", to:"deadline",    type:"stress", w:3   },
+  { from:"student", to:"gradproj",    type:"stress", w:2   },
+  { from:"student", to:"counseling",  type:"weak",   w:1   },
+  { from:"student", to:"health",      type:"weak",   w:1   },
+  { from:"student", to:"sports",      type:"cope",   w:1.5 },
+  { from:"student", to:"materials",   type:"stress", w:2   },
+  { from:"student", to:"rent",        type:"stress", w:1.5 },
+  { from:"student", to:"scholarship", type:"weak",   w:1   },
+  { from:"student", to:"family",      type:"cope",   w:2.5 },
+  { from:"student", to:"peers",       type:"cope",   w:2   },
+  { from:"student", to:"partner",     type:"stress", w:1.5 },
+  { from:"student", to:"sleep",       type:"stress", w:3   },
+  { from:"student", to:"eating",      type:"stress", w:2   },
+  { from:"student", to:"activity",    type:"cope",   w:1.5 },
+  { from:"deadline",to:"sleep",       type:"stress", w:2   },
+  { from:"jury",    to:"sleep",       type:"stress", w:1.5 },
+  { from:"studio",  to:"deadline",    type:"stress", w:1.5 },
+  { from:"instructor",to:"jury",      type:"stress", w:1.5 },
+  { from:"materials",to:"scholarship",type:"stress", w:1   },
+  { from:"family",  to:"scholarship", type:"cope",   w:1   },
+  { from:"peers",   to:"studio",      type:"cope",   w:1   },
+];
+
+const TYPE_COLOR = { stress:"#E24B4A", cope:"#1D9E75", weak:"#C8C4BC" };
+const TYPE_DASH  = { stress:"none",    cope:"none",    weak:"5,4"      };
+
+const SVG_W = 960, SVG_H = 700;
+const svg = document.getElementById("canvas");
+svg.setAttribute("viewBox", `0 0 ${SVG_W} ${SVG_H}`);
+svg.setAttribute("width",  SVG_W);
+svg.setAttribute("height", SVG_H);
+
+// ── DEFS ──────────────────────────────────────────────────────────────────────
+["stress","cope","weak"].forEach(t => {
+  const defs = svg.querySelector("defs") || svg.insertBefore(
+    document.createElementNS("http://www.w3.org/2000/svg","defs"), svg.firstChild);
+  const m = document.createElementNS("http://www.w3.org/2000/svg","marker");
+  m.setAttribute("id",`arr-${t}`);
+  m.setAttribute("viewBox","0 0 8 8");
+  m.setAttribute("refX","7"); m.setAttribute("refY","4");
+  m.setAttribute("markerWidth","5"); m.setAttribute("markerHeight","5");
+  m.setAttribute("orient","auto");
+  const path = document.createElementNS("http://www.w3.org/2000/svg","path");
+  path.setAttribute("d","M1 1L7 4L1 7");
+  path.setAttribute("fill","none");
+  path.setAttribute("stroke", TYPE_COLOR[t]);
+  path.setAttribute("stroke-width","1.5");
+  path.setAttribute("stroke-linecap","round");
+  path.setAttribute("stroke-linejoin","round");
+  m.appendChild(path);
+  if(!svg.querySelector("defs")) svg.insertBefore(document.createElementNS("http://www.w3.org/2000/svg","defs"), svg.firstChild);
+  svg.querySelector("defs").appendChild(m);
+});
+
+const activeCats = new Set(Object.keys(CATS));
+let selectedId = null;
+
+// ── LEGEND ────────────────────────────────────────────────────────────────────
+const legEl = document.getElementById("legend");
+Object.entries(CATS).forEach(([k,v]) => {
+  if(k === "student") return;
+  const btn = document.createElement("button");
+  btn.className = "leg-btn active";
+  btn.innerHTML = `<span class="leg-dot" style="background:${v.color}"></span>${v.label}`;
+  btn.addEventListener("click", () => {
+    if(activeCats.has(k)) { activeCats.delete(k); btn.classList.remove("active"); btn.classList.add("inactive"); }
+    else { activeCats.add(k); btn.classList.add("active"); btn.classList.remove("inactive"); }
+    render();
+  });
+  legEl.appendChild(btn);
+});
+
+// edge type legend
+const eSep = document.createElement("div");
+eSep.style.cssText = "width:1px;height:20px;background:#E0DDD5;margin:0 4px";
+legEl.appendChild(eSep);
+
+[{t:"stress",l:"Stress"},{t:"cope",l:"Coping"},{t:"weak",l:"Weak link"}].forEach(({t,l}) => {
+  const el = document.createElement("div");
+  el.className = "edge-legend";
+  el.innerHTML = `<svg width="20" height="10"><line x1="0" y1="5" x2="20" y2="5" stroke="${TYPE_COLOR[t]}" stroke-width="${t==='weak'?1:2}" stroke-dasharray="${TYPE_DASH[t]}"/></svg><span>${l}</span>`;
+  legEl.appendChild(el);
+});
+
+// ── RENDER ────────────────────────────────────────────────────────────────────
+function visNode(n){ return activeCats.has(n.cat) || n.cat === "student"; }
+
+function render(){
+  // remove old content but keep defs
+  Array.from(svg.children).forEach(c => {
+    if(c.tagName !== "defs") svg.removeChild(c);
+  });
+
+  // edges
+  const eGroup = document.createElementNS("http://www.w3.org/2000/svg","g");
+  eGroup.setAttribute("id","edges");
+  EDGES.forEach(e => {
+    const fn = NODES.find(n => n.id === e.from);
+    const tn = NODES.find(n => n.id === e.to);
+    if(!fn||!tn||!visNode(fn)||!visNode(tn)) return;
+    const dx = tn.x-fn.x, dy = tn.y-fn.y, d = Math.sqrt(dx*dx+dy*dy);
+    const sx = fn.x+dx/d*(fn.r+3), sy = fn.y+dy/d*(fn.r+3);
+    const ex = tn.x-dx/d*(tn.r+7), ey = tn.y-dy/d*(tn.r+7);
+    const line = document.createElementNS("http://www.w3.org/2000/svg","line");
+    line.setAttribute("x1",sx); line.setAttribute("y1",sy);
+    line.setAttribute("x2",ex); line.setAttribute("y2",ey);
+    line.setAttribute("stroke", TYPE_COLOR[e.type]);
+    line.setAttribute("stroke-width", e.w);
+    line.setAttribute("stroke-dasharray", TYPE_DASH[e.type]);
+    line.setAttribute("opacity","0.5");
+    line.setAttribute("marker-end",`url(#arr-${e.type})`);
+    eGroup.appendChild(line);
+  });
+  svg.appendChild(eGroup);
+
+  // nodes
+  const nGroup = document.createElementNS("http://www.w3.org/2000/svg","g");
+  nGroup.setAttribute("id","nodes");
+  NODES.filter(visNode).forEach(n => {
+    const cat = CATS[n.cat];
+    const isSelected = selectedId === n.id;
+    const g = document.createElementNS("http://www.w3.org/2000/svg","g");
+    g.style.cursor = "pointer";
+
+    // glow behind selected
+    if(isSelected){
+      const glow = document.createElementNS("http://www.w3.org/2000/svg","circle");
+      glow.setAttribute("cx",n.x); glow.setAttribute("cy",n.y);
+      glow.setAttribute("r", n.r+8);
+      glow.setAttribute("fill", cat.color);
+      glow.setAttribute("opacity","0.18");
+      g.appendChild(glow);
+    }
+
+    const c = document.createElementNS("http://www.w3.org/2000/svg","circle");
+    c.setAttribute("cx",n.x); c.setAttribute("cy",n.y); c.setAttribute("r",n.r);
+    c.setAttribute("fill", cat.color);
+    c.setAttribute("opacity", isSelected ? "1" : "0.82");
+    c.setAttribute("stroke","#fff");
+    c.setAttribute("stroke-width", isSelected ? "2.5" : "1");
+    g.appendChild(c);
+
+    // text lines — font size scales with radius, capped so text fits
+    const lines = n.label;
+    const maxChars = Math.max(...lines.map(l => l.length));
+    // available width inside circle ≈ r * 1.3 (chord at mid-height)
+    const availW = n.r * 1.3;
+    // estimate: each char ~0.58 × fontSize wide
+    const fsByWidth = availW / (maxChars * 0.58);
+    // also cap by line count so lines don't overflow vertically
+    const fsByHeight = (n.r * 1.6) / (lines.length * 1.35);
+    const fs = Math.min(fsByWidth, fsByHeight, 13).toFixed(1);
+    const lineH = parseFloat(fs) * 1.35;
+    const totalH = (lines.length - 1) * lineH;
+    lines.forEach((ln, i) => {
+      const t = document.createElementNS("http://www.w3.org/2000/svg","text");
+      t.setAttribute("x", n.x);
+      t.setAttribute("y", n.y - totalH/2 + i*lineH);
+      t.setAttribute("text-anchor","middle");
+      t.setAttribute("dominant-baseline","central");
+      t.setAttribute("fill","#fff");
+      t.setAttribute("font-size", fs);
+      t.setAttribute("font-weight","600");
+      t.setAttribute("font-family","'Segoe UI', system-ui, sans-serif");
+      t.textContent = ln;
+      g.appendChild(t);
+    });
+
+    g.addEventListener("click", () => { selectedId = n.id; render(); showInfo(n); });
+
+    // hover effect
+    g.addEventListener("mouseenter", () => { c.setAttribute("opacity","1"); });
+    g.addEventListener("mouseleave", () => { c.setAttribute("opacity", selectedId===n.id?"1":"0.82"); });
+
+    nGroup.appendChild(g);
+  });
+  svg.appendChild(nGroup);
+}
+
+// ── INFO PANEL ────────────────────────────────────────────────────────────────
+function showInfo(n){
+  const cat = CATS[n.cat];
+  document.getElementById("info-bar").style.background = cat.color;
+  document.getElementById("info-panel").querySelector(".info-content").innerHTML =
+    `<div class="info-title">${n.label.join(" ")}</div>
+     <div class="info-cat" style="color:${cat.color}">${cat.label}</div>
+     <div class="info-desc">${n.desc}</div>
+     <div class="info-tags">${n.tags.map(t=>`<span class="info-tag">${t}</span>`).join("")}</div>`;
+}
+
+// ── PAN & ZOOM ────────────────────────────────────────────────────────────────
+const wrap = document.getElementById("canvas-wrap");
+let scale = 1, tx = 0, ty = 0;
+let dragging = false, lastX = 0, lastY = 0;
+
+function applyTransform(){
+  svg.style.transform = `translate(${tx}px,${ty}px) scale(${scale})`;
+}
+
+wrap.addEventListener("mousedown", e => {
+  if(e.target.tagName === "circle" || e.target.tagName === "text") return;
+  dragging = true; lastX = e.clientX; lastY = e.clientY;
+});
+window.addEventListener("mousemove", e => {
+  if(!dragging) return;
+  tx += e.clientX - lastX; ty += e.clientY - lastY;
+  lastX = e.clientX; lastY = e.clientY;
+  applyTransform();
+});
+window.addEventListener("mouseup", () => { dragging = false; });
+
+wrap.addEventListener("wheel", e => {
+  e.preventDefault();
+  const delta = e.deltaY < 0 ? 1.1 : 0.9;
+  scale = Math.min(3, Math.max(0.3, scale * delta));
+  applyTransform();
+}, { passive: false });
+
+document.getElementById("zoom-in").addEventListener("click",  () => { scale = Math.min(3,  scale*1.2); applyTransform(); });
+document.getElementById("zoom-out").addEventListener("click", () => { scale = Math.max(0.3, scale*0.8); applyTransform(); });
+document.getElementById("zoom-reset").addEventListener("click",() => { scale=1; tx=0; ty=0; applyTransform(); });
+
+// initial fit
+function fitToWrap(){
+  const ww = wrap.clientWidth, wh = wrap.clientHeight;
+  const s = Math.min(ww/SVG_W, wh/SVG_H) * 0.92;
+  scale = s;
+  tx = (ww - SVG_W*s)/2;
+  ty = (wh - SVG_H*s)/2;
+  applyTransform();
+}
+
+render();
+window.addEventListener("load", fitToWrap);
+window.addEventListener("resize", fitToWrap);
+</script>
+</body>
+</html>
